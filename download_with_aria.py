@@ -5,6 +5,7 @@ Supports automatic ZIP extraction, safetensors filtering, and robust error recov
 Changes:
 - Retained custom robust resume logic, HTTP header-based auth, and aria2c timeout flags.
 - Adapted upstream fix: Omitted explicit format=SafeTensor from Attempt 1 to support GGUF/Pickle types seamlessly.
+- Default base URL changed to civitai.red; civitai.com available via --base-url.
 """
 import argparse
 import os
@@ -20,7 +21,9 @@ from urllib.parse import urlencode, unquote, urlparse, parse_qs
 import requests
 
 # Constants
-CIVITAI_API_BASE = "https://civitai.com/api"
+CIVITAI_RED_API_BASE = "https://civitai.red/api"
+CIVITAI_COM_API_BASE = "https://civitai.com/api"
+DEFAULT_API_BASE = CIVITAI_RED_API_BASE
 ARIA2_CONNECTIONS = 8
 ARIA2_SPLITS = 8
 PROGRESS_INTERVAL = 10
@@ -45,10 +48,11 @@ STATUS = {
 class CivitAIDownloader:
     """Handles downloading and processing of CivitAI model files."""
 
-    def __init__(self, token: str, output_dir: str = "."):
+    def __init__(self, token: str, output_dir: str = ".", api_base: str = DEFAULT_API_BASE):
         self.token = token or ""
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.api_base = api_base
 
     # --- Header filename helpers ------------------------------------------------
 
@@ -135,7 +139,7 @@ class CivitAIDownloader:
     def get_model_info(self, model_id: str) -> Optional[str]:
         """Fetch model metadata from CivitAI API and return the primary model file name."""
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-        url = f"{CIVITAI_API_BASE}/v1/model-versions/{model_id}"
+        url = f"{self.api_base}/v1/model-versions/{model_id}"
         try:
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
@@ -401,11 +405,11 @@ class CivitAIDownloader:
         Returns (ok, final_path or None).
         """
         # --- Attempt 1: Primary File Format (SafeTensor, GGUF, Pickle, etc.) ---
-        # ADAPTED UPSTREAM FIX: Omitting `format=` parameters lets CivitAI serve whatever 
+        # ADAPTED UPSTREAM FIX: Omitting `format=` parameters lets CivitAI serve whatever
         # the version's primary file is. Hardcoding format=SafeTensor causes 404s on GGUF versions.
         params = {"type": "Model"}
         primary_url = (
-            f"{CIVITAI_API_BASE}/download/models/{model_id}?{urlencode(params)}"
+            f"{self.api_base}/download/models/{model_id}?{urlencode(params)}"
         )
 
         # Resolve filename: user-supplied > metadata API > redirect URL > fallback
@@ -439,7 +443,7 @@ class CivitAIDownloader:
 
         # --- Attempt 2: Diffusers format (ZIP) ---------------------------------
         params = {"type": "Model", "format": "Diffusers"}
-        zip_url = f"{CIVITAI_API_BASE}/download/models/{model_id}?{urlencode(params)}"
+        zip_url = f"{self.api_base}/download/models/{model_id}?{urlencode(params)}"
 
         # Use prefer_filename with _diffusers.zip suffix if available
         header_name = None
@@ -490,10 +494,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s -m 123456                    # Download model to current directory
-  %(prog)s -m 123456 -o ./models        # Download to specific directory
-  %(prog)s -m 123456 --force            # Force re-download
+  %(prog)s -m 123456                              # Download from civitai.red (default)
+  %(prog)s -m 123456 -o ./models                 # Download to specific directory
+  %(prog)s -m 123456 --force                     # Force re-download
   %(prog)s -m 123456 --filename custom.safetensors  # Use custom filename
+  %(prog)s -m 123456 --base-url https://civitai.com/api  # Use civitai.com instead
         """,
     )
     parser.add_argument(
@@ -516,11 +521,21 @@ Examples:
         action="store_true",
         help="Force re-download even if valid file exists",
     )
+    parser.add_argument(
+        "--base-url",
+        default=DEFAULT_API_BASE,
+        help=(
+            f"API base URL (default: {CIVITAI_RED_API_BASE}). "
+            f"Use {CIVITAI_COM_API_BASE} for the main site."
+        ),
+    )
     args = parser.parse_args()
 
     try:
         token = get_token(args.token)
-        downloader = CivitAIDownloader(token, args.output)
+        print(f"{STATUS['info']} Using API: {args.base_url}")
+        downloader = CivitAIDownloader(
+            token, args.output, api_base=args.base_url)
 
         # Prefer user-supplied name; otherwise we'll derive from headers at download time.
         prefer_filename = args.filename

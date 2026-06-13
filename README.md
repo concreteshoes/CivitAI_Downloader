@@ -69,7 +69,9 @@ source ~/.bashrc
 
 ### Basic Usage
 
-Download a model using its ID:
+The script is set up to download from civitai.red by default. In order to download
+from main website, you need to pass the following: `--base-url https://civitai.com/api`.
+Download a model using its `modelVersionId` identifier:
 
 ```bash
 ./download_with_aria.py -m 123456
@@ -100,6 +102,7 @@ Download a model using its ID:
 | `--token` | - | CivitAI API token | From environment |
 | `--filename` | - | Override default filename | From API |
 | `--force` | - | Force re-download | False |
+| `--base-url https://civitai.com/api` | - | Download from the main site | - |
 
 ## 🎯 Examples
 
