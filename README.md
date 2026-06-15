@@ -69,28 +69,27 @@ source ~/.bashrc
 
 ### Basic Usage
 
-The script is set up to download from civitai.red by default. In order to download
-from main website, you need to pass the following: `--base-url https://civitai.com/api`.
-Download a model using its `modelVersionId` identifier:
+The script is set up to download from civitai.red by default. The `modelId` and `fileid` are required.
+In order to download from main website, you need to pass the following: `--base-url https://civitai.com/api`.
 
 ```bash
-./download_with_aria.py -m 123456
+./download_with_aria.py -m 134605:98218
 ```
 
 ### Advanced Options
 
 ```bash
 # Download to specific directory
-./download_with_aria.py -m 123456 -o ./models
+./download_with_aria.py -m 123456:123456 -o ./models
 
 # Use custom filename
-./download_with_aria.py -m 123456 --filename "my_custom_model.safetensors"
+./download_with_aria.py -m 2500309:2388353 --filename "my_custom_model.safetensors"
 
 # Force re-download (ignore existing files)
-./download_with_aria.py -m 123456 --force
+./download_with_aria.py -m 134605:98218 --force
 
 # Provide token via command line (not recommended for security)
-./download_with_aria.py -m 123456 --token "your_token_here"
+./download_with_aria.py -m 134605:98218 --token "your_token_here"
 ```
 
 ### Command Line Arguments
@@ -108,19 +107,19 @@ Download a model using its `modelVersionId` identifier:
 
 ### Download a LoRA model
 ```bash
-./download_with_aria.py -m 245589
+./download_with_aria.py -m 245589:123456
 ```
 
 ### Download multiple models to organized folders
 ```bash
 # Download character LoRA
-./download_with_aria.py -m 245589 -o ./models/lora/characters
+./download_with_aria.py -m 245589:123456 -o ./models/lora/characters
 
 # Download style LoRA
-./download_with_aria.py -m 234567 -o ./models/lora/styles
+./download_with_aria.py -m 234567:123456 -o ./models/lora/styles
 
 # Download checkpoint
-./download_with_aria.py -m 345678 -o ./models/checkpoints
+./download_with_aria.py -m 345678:123456 -o ./models/checkpoints
 ```
 
 ### Batch download with a simple script
@@ -169,7 +168,7 @@ Install aria2 using the installation instructions above.
 ### "Download validation failed"
 The file may be corrupted. Use `--force` to re-download:
 ```bash
-./download_with_aria.py -m 123456 --force
+./download_with_aria.py -m 123456:123456 --force
 ```
 
 ### Slow downloads

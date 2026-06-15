@@ -6,6 +6,7 @@ Changes:
 - Retained custom robust resume logic, HTTP header-based auth, and aria2c timeout flags.
 - Adapted upstream fix: Omitted explicit format=SafeTensor from Attempt 1 to support GGUF/Pickle types seamlessly.
 - Default base URL changed to civitai.red; civitai.com available via --base-url.
+- -m requires versionId:fileId format — civitai.red now mandates fileId for all models.
 """
 import argparse
 import os
@@ -134,7 +135,7 @@ class CivitAIDownloader:
             print(f"{STATUS['warning']} Could not resolve download URL: {e}")
             return url, None
 
-    # --- Metadata (kept for optional use) --------------------------------------
+    # --- Metadata ---------------------------------------------------------------
 
     def get_model_info(self, model_id: str) -> Optional[str]:
         """Fetch model metadata from CivitAI API and return the primary model file name."""
@@ -397,17 +398,18 @@ class CivitAIDownloader:
             return False, None
 
     def download_with_aria2(
-        self, model_id: str, prefer_filename: Optional[str], force: bool = False
+        self, model_id: str, file_id: str, prefer_filename: Optional[str], force: bool = False
     ) -> Tuple[bool, Optional[Path]]:
         """
         Try the version's primary file first, then Diffusers ZIP as fallback.
+        model_id: CivitAI model version ID.
+        file_id: specific file ID within the version — required, civitai.red mandates it.
         prefer_filename: user-supplied target name (may be None).
         Returns (ok, final_path or None).
         """
-        # --- Attempt 1: Primary File Format (SafeTensor, GGUF, Pickle, etc.) ---
-        # ADAPTED UPSTREAM FIX: Omitting `format=` parameters lets CivitAI serve whatever
-        # the version's primary file is. Hardcoding format=SafeTensor causes 404s on GGUF versions.
-        params = {"type": "Model"}
+        # fileId is always included — civitai.red requires it for all models.
+        params = {"type": "Model", "fileId": file_id}
+        print(f"{STATUS['info']} Using fileId: {file_id}")
         primary_url = (
             f"{self.api_base}/download/models/{model_id}?{urlencode(params)}"
         )
@@ -423,7 +425,6 @@ class CivitAIDownloader:
             candidate = self.output_dir / target_name
             aria2_control = candidate.with_suffix(candidate.suffix + ARIA2_EXT)
             if candidate.exists() and not aria2_control.exists():
-                # File exists but has no .aria2 control file — check validity
                 is_valid, _ = self.validate_file(candidate)
                 if not is_valid:
                     self.cleanup_incomplete_download(candidate)
@@ -442,15 +443,13 @@ class CivitAIDownloader:
         )
 
         # --- Attempt 2: Diffusers format (ZIP) ---------------------------------
-        params = {"type": "Model", "format": "Diffusers"}
+        params = {"type": "Model", "format": "Diffusers", "fileId": file_id}
         zip_url = f"{self.api_base}/download/models/{model_id}?{urlencode(params)}"
 
-        # Use prefer_filename with _diffusers.zip suffix if available
         header_name = None
         if prefer_filename:
             header_name = f"{Path(prefer_filename).stem}_diffusers.zip"
 
-        # Same selective cleanup for the ZIP fallback
         if header_name:
             candidate = self.output_dir / header_name
             aria2_control = candidate.with_suffix(candidate.suffix + ARIA2_EXT)
@@ -487,6 +486,27 @@ def get_token(args_token: Optional[str]) -> str:
         sys.exit(1)
 
 
+def parse_model_arg(raw: str) -> Tuple[str, str]:
+    """
+    Parse the -m argument which must be in versionId:fileId format.
+    Exits with a clear error if the format is wrong.
+    """
+    raw = raw.strip()
+    if ":" not in raw:
+        print(f"{STATUS['error']} Invalid format for -m: '{raw}'")
+        print("  Expected: versionId:fileId")
+        print("  Example:  -m 2500309:2388353")
+        print("  Both IDs are in the civitai.red download URL:")
+        print("  https://civitai.red/api/download/models/2500309?fileId=2388353")
+        sys.exit(1)
+    model_id, file_id = raw.split(":", 1)
+    if not model_id or not file_id:
+        print(f"{STATUS['error']} Both versionId and fileId must be non-empty.")
+        print("  Expected: versionId:fileId  e.g. -m 2500309:2388353")
+        sys.exit(1)
+    return model_id, file_id
+
+
 def main():
     """Main entry point for the downloader."""
     parser = argparse.ArgumentParser(
@@ -494,19 +514,25 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s -m 123456                              # Download from civitai.red (default)
-  %(prog)s -m 123456 -o ./models                 # Download to specific directory
-  %(prog)s -m 123456 --force                     # Force re-download
-  %(prog)s -m 123456 --filename custom.safetensors  # Use custom filename
-  %(prog)s -m 123456 --base-url https://civitai.com/api  # Use civitai.com instead
+  %(prog)s -m 2500309:2388353                          # Download from civitai.red (default)
+  %(prog)s -m 2500309:2388353 -o ./models             # Download to specific directory
+  %(prog)s -m 2500309:2388353 -o ./loras              # Download LoRA to loras directory
+  %(prog)s -m 2500309:2388353 --force                 # Force re-download
+  %(prog)s -m 2500309:2388353 --filename custom.safetensors  # Use custom filename
+  %(prog)s -m 2500309:2388353 --base-url https://civitai.com/api  # Use civitai.com instead
+
+Both IDs come from the download URL:
+  https://civitai.red/api/download/models/2500309?fileId=2388353
+                                           ↑                ↑
+                                       versionId         fileId
         """,
     )
     parser.add_argument(
-        "-m", "--model-id", required=True, help="CivitAI model version ID"
+        "-m", "--model-id", required=True,
+        help="versionId:fileId from the civitai.red download URL (e.g. 2500309:2388353)"
     )
     parser.add_argument(
-        "-o",
-        "--output",
+        "-o", "--output",
         default=".",
         help="Output directory (default: current directory)",
     )
@@ -533,24 +559,24 @@ Examples:
 
     try:
         token = get_token(args.token)
+        model_id, file_id = parse_model_arg(args.model_id)
+        print(f"{STATUS['info']} Version ID: {model_id} | File ID: {file_id}")
         print(f"{STATUS['info']} Using API: {args.base_url}")
-        downloader = CivitAIDownloader(
-            token, args.output, api_base=args.base_url)
 
-        # Prefer user-supplied name; otherwise we'll derive from headers at download time.
+        downloader = CivitAIDownloader(token, args.output, api_base=args.base_url)
+
         prefer_filename = args.filename
         if prefer_filename:
             print(f"{STATUS['info']} Using custom filename: {prefer_filename}")
 
         ok, final_path = downloader.download_with_aria2(
-            args.model_id, prefer_filename, force=args.force
+            model_id, file_id, prefer_filename, force=args.force
         )
 
         if ok:
             if final_path and final_path.exists():
                 print(f"{STATUS['success']} Model ready at: {final_path}")
             else:
-                # fallback: pick most recent .safetensors in output
                 safes = sorted(
                     downloader.output_dir.glob("*.safetensors"),
                     key=lambda p: p.stat().st_mtime,
@@ -558,8 +584,7 @@ Examples:
                 if safes:
                     print(f"{STATUS['success']} Model ready at: {safes[-1]}")
                 else:
-                    print(
-                        f"{STATUS['success']} Download completed successfully")
+                    print(f"{STATUS['success']} Download completed successfully")
         else:
             sys.exit(1)
 
