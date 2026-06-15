@@ -127,7 +127,7 @@ In order to download from main website, you need to pass the following: `--base-
 #!/bin/bash
 # download_batch.sh
 
-models=(245589 234567 345678 456789)
+models=(245589:123456 234567:123456 345678:123456 456789:123456)
 for model_id in "${models[@]}"; do
     ./download_with_aria.py -m "$model_id" -o ./models
 done
