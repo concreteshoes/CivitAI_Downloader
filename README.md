@@ -69,8 +69,7 @@ source ~/.bashrc
 
 ### Basic Usage
 
-The script is set up to download from civitai.red by default. The `modelId` and `fileid` are required.
-In order to download from main website, you need to pass the following: `--base-url https://civitai.com/api`.
+The `modelId` and `fileid` are required.
 
 ```bash
 ./download_with_aria.py -m 134605:98218
