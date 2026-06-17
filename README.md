@@ -100,7 +100,6 @@ The `modelId` and `fileid` are required.
 | `--token` | - | CivitAI API token | From environment |
 | `--filename` | - | Override default filename | From API |
 | `--force` | - | Force re-download | False |
-| `--base-url https://civitai.com/api` | - | Download from the main site | - |
 
 ## 🎯 Examples
 
